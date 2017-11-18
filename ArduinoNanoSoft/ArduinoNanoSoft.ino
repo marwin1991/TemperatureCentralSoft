@@ -80,8 +80,10 @@ bool radioNumber = 0;
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(7,8);
 
+//byte PiListenPipe[6] = {F0,F0,F0,F0,F0,F0};
+//byte myPipe[6] = {F1,F1,F1,F1,F1,F1};
 
-byte addresses[][6] = {"1Node","2Node"};
+byte addresses[][6] = {0xF0F0F0F0F0F0,0xF1F1F1F1F1F1};
 
 void setup() {
   Serial.begin(115200);
