@@ -19,7 +19,37 @@ float getTemp(){
    if the last digit odd -100<T<0 C
    if even 0<=T<100 C  */
 short prepareTemp(float temp){
+    if (temp > 100){
+        temperatureOverflowFlag = true;  // te bledy mozna w sumie jakos zmienic pozniej
+        return 9990;
+    }
 
+    if (temp < -100){
+        temperatureUnderflowFlag = true;
+        return 9991;
+    }
+
+    bool isMinus = false;
+    if(temp < 0){
+        isMinus = true;
+        temp *= -1;
+    }
+
+    short t;
+    int i;
+    for(i = 0; i < 2; i++){
+        temp *= 10;
+        t = (short) temp;
+    }
+
+    if(isMinus){
+        if(t%2 == 0)
+            t++;
+    } else {
+        if(t%2 == 1)
+            t++;
+    }
+    return t;
 }
 /****************Messege preparation***********************************/
 byte batteryStatus = 9; // 9 - full, 0 - empty
@@ -27,7 +57,19 @@ byte batteryStatus = 9; // 9 - full, 0 - empty
 unsigned short nanoID = 0;
 
 unsigned long prepareMessage(short prepeardTemp){
-  
+    unsigned long msg = 1; // bez bledu
+
+    if(temperatureOverflowFlag || temperatureUnderflowFlag)
+        msg = 2; // 2 jako blad chyba lepsza bo wszystkie wiadomosci bd mialy taka sama dlugosc
+
+    msg *= 10000;
+    msg += nanoID;
+    msg *= 10;
+    msg += batteryStatus;
+    msg *= 10000;
+    msg += preparedTemp;
+
+    return msg;
 }
 /****************** User Config ***************************/
 /***      Set this radio as radio number 0 or 1         ***/
