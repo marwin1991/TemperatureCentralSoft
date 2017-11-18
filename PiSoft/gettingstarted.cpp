@@ -80,7 +80,7 @@ bool radioNumber = 1;
 /********************************/
 
 // Radio pipe addresses for the 2 nodes to communicate.
-const uint8_t pipes[][6] = {"1Node","2Node"};
+const uint8_t pipes[][6] = {0xF0F0F0F0F0F0,0xF1F1F1F1F1F1};
 
 void decodeMessageTempOrError(unsigned long msg){
     short t = msg%10000;
