@@ -100,7 +100,7 @@ void decodeMessageTempOrError(unsigned long msg){
 		if(t%2 == 1)
         t *= -1;
 		float temp = (t * 1.0) / 100;
-        printf("ID: %d Battery: %d%% Temperature: %.2f\n", nanoId, batteryStatus*10, temp);
+        printf("ID: %d Battery: %d%% Temperature: %.2f\n", nanoId, (batteryStatus+1)*10, temp);
 	}
 }
 
@@ -216,8 +216,8 @@ int main(int argc, char** argv){
 					radio.read( &got_time, sizeof(unsigned long) );
 				}
 				radio.stopListening();
-				
 				radio.write( &got_time, sizeof(unsigned long) );
+				decodeMessageTempOrError(got_time);
 
 				// Now, resume listening so we catch the next packets.
 				radio.startListening();
