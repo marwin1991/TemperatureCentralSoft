@@ -82,6 +82,28 @@ bool radioNumber = 1;
 // Radio pipe addresses for the 2 nodes to communicate.
 const uint8_t pipes[][6] = {"1Node","2Node"};
 
+void decodeMessageTempOrError(unsigned long msg){
+    short t = msg%10000;
+	msg /= 10000;
+ 
+    short batteryStatus = msg%10;
+    msg /= 10;
+
+    short nanoId = msg%10000;
+    msg /= 10000;
+
+    short type = msg%10;
+ 
+    if(type == 2)
+        printf("Some error occures on device with ID: %d, please check file: ...\n", nanoId);
+    else{
+		if(t%2 == 1)
+        t *= -1;
+		float temp = (t * 1.0) / 100;
+        printf("ID: %d Battery: %d%% Temperature: %.2f\n", nanoId, batteryStatus*10, temp);
+	}
+}
+
 
 int main(int argc, char** argv){
 
