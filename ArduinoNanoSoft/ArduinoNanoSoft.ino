@@ -2,6 +2,9 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "RF24.h"
+/******************LED - green ******************************************/
+#define GREEN_LED_PIN 4
+
 /******************Thermometer Config and functions**********************/
 #define DS18B20_PIN 2
 #define TEMP_RESOLUTION 9 
@@ -20,13 +23,13 @@ float getTemp(){
    if even 0<=T<100 C  */
 short prepareTemp(float temp){
     if (temp > 100){
-        temperatureOverflowFlag = true;  // te bledy mozna w sumie jakos zmienic pozniej
-        return 9990;
+        temperatureOverflowFlag = true;  
+        return 0001;
     }
 
     if (temp < -100){
         temperatureUnderflowFlag = true;
-        return 9991;
+        return 0002;
     }
 
     bool isMinus = false;
@@ -56,7 +59,7 @@ byte batteryStatus = 9; // 9 - full, 0 - empty
 
 unsigned short nanoID = 0;
 
-unsigned long prepareMessage(short prepeardTemp){
+unsigned long prepareMessage(short preparedTemp){
     unsigned long msg = 1; // bez bledu
 
     if(temperatureOverflowFlag || temperatureUnderflowFlag)
@@ -68,7 +71,6 @@ unsigned long prepareMessage(short prepeardTemp){
     msg += batteryStatus;
     msg *= 10000;
     msg += preparedTemp;
-
     return msg;
 }
 /****************** User Config ***************************/
@@ -81,19 +83,18 @@ RF24 radio(7,8);
 
 byte addresses[][6] = {"1Node","2Node"};
 
-// Used to control whether this node is sending or receiving
-bool role = 0;
-
 void setup() {
   Serial.begin(115200);
   Serial.println(F("Arduino Nano V 3.0 - Temperature sensor via NRF24L01"));
 
   temperatureSensors.begin();
-  if (!temperatureSensors.getAddress(thermometerAdress, 0)) 
+  if (!temperatureSensors.getAddress(thermometerAdress, 0)) /* Get address of DS18B20 */
     Serial.println("Unable to find address of thermometer"); 
   temperatureSensors.setResolution(thermometerAdress, TEMP_RESOLUTION);
   Serial.println(getTemp());
 
+  pinMode(GREEN_LED_PIN, OUTPUT);
+  
   radio.begin();
 
   // Set the PA Level low to prevent power supply related issues since this is a
@@ -112,7 +113,8 @@ void setup() {
   // Start the radio listening for data
   radio.startListening();
 }
-
+// Used to control whether this node is sending or receiving
+bool role = 1;
 void loop() {
   
   
@@ -124,10 +126,12 @@ if (role == 1)  {
     
     Serial.println(F("Now sending"));
 
-    unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
-     if (!radio.write( &start_time, sizeof(unsigned long) )){
+    unsigned long msg = prepareMessage(prepareTemp(getTemp()));                             // Take the time, and send it.  This will block until complete
+     if (!radio.write( &msg, sizeof(unsigned long) )){
        Serial.println(F("failed"));
      }
+    Serial.print(F("Send messege: "));
+    Serial.println(msg);
         
     radio.startListening();                                    // Now, continue listening
     
@@ -135,7 +139,7 @@ if (role == 1)  {
     boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
     
     while ( ! radio.available() ){                             // While nothing is received
-      if (micros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
+      if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
           timeout = true;
           break;
       }      
@@ -149,17 +153,14 @@ if (role == 1)  {
         unsigned long end_time = micros();
         
         // Spew it
-        Serial.print(F("Sent "));
-        Serial.print(start_time);
-        Serial.print(F(", Got response "));
-        Serial.print(got_time);
-        Serial.print(F(", Round-trip delay "));
-        Serial.print(end_time-start_time);
-        Serial.println(F(" microseconds"));
+        Serial.print(F("Got response "));
+        Serial.println(got_time);
     }
-
-    // Try again 1s later
-    delay(1000);
+    digitalWrite(GREEN_LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    delay(1000);                       // wait for a second
+    digitalWrite(GREEN_LED_PIN, LOW);    // turn the LED off by making the voltage LOW  
+    // Try again 5s later
+    delay(5000);
   }
 
 
