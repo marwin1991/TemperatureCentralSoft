@@ -80,7 +80,8 @@ bool radioNumber = 1;
 /********************************/
 
 // Radio pipe addresses for the 2 nodes to communicate.
-const uint8_t pipes[][6] = {0xF0F0F0F0F0F0,0xF1F1F1F1F1F1};
+//const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
+const uint8_t pipes[][6] = {"1Node","2Node"};
 
 void decodeMessageTempOrError(unsigned long msg){
     short t = msg%10000;
@@ -217,15 +218,14 @@ int main(int argc, char** argv){
 				}
 				radio.stopListening();
 				radio.write( &got_time, sizeof(unsigned long) );
-				decodeMessageTempOrError(got_time);
 
 				// Now, resume listening so we catch the next packets.
 				radio.startListening();
-
+				decodeMessageTempOrError(got_time);
 				// Spew it
 				printf("Got payload(%d) %lu...\n",sizeof(unsigned long), got_time);
 				
-				delay(925); //Delay after payload responded to, minimize RPi CPU time
+				//delay(925); //Delay after payload responded to, minimize RPi CPU time
 				
 			}
 		
