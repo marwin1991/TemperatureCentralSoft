@@ -57,7 +57,7 @@ short prepareTemp(float temp){
 /****************Messege preparation***********************************/
 byte batteryStatus = 9; // 9 - full, 0 - empty
 
-unsigned short nanoID = 0;
+unsigned short nanoID = 0; 
 
 unsigned long prepareMessage(short preparedTemp){
     unsigned long msg = 1; // bez bledu
@@ -80,10 +80,10 @@ bool radioNumber = 0;
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(7,8);
 
-//byte PiListenPipe[6] = {F0,F0,F0,F0,F0,F0};
-//byte myPipe[6] = {F1,F1,F1,F1,F1,F1};
-
-byte addresses[][6] = {0xF0F0F0F0F0F0,0xF1F1F1F1F1F1};
+//#define TEMP_REPORT_PIEP  0xF0F0F0F0E1LL
+//#define MYPIPE 0xF0F0F0F0D2LL
+//const uint64_t addresses[2] = { TEMP_REPORT_PIEP, MYPIPE };
+byte addresses[][6] = {"1Node","2Node"};
 
 void setup() {
   Serial.begin(115200);
@@ -101,16 +101,11 @@ void setup() {
 
   // Set the PA Level low to prevent power supply related issues since this is a
  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-  radio.setPALevel(RF24_PA_LOW);
+  radio.setPALevel(RF24_PA_MAX);
   
   // Open a writing and reading pipe on each radio, with opposite addresses
-  if(radioNumber){
-    radio.openWritingPipe(addresses[1]);
-    radio.openReadingPipe(1,addresses[0]);
-  }else{
-    radio.openWritingPipe(addresses[0]);
-    radio.openReadingPipe(1,addresses[1]);
-  }
+  radio.openWritingPipe(addresses[0]);
+  radio.openReadingPipe(1,addresses[1]);
   
   // Start the radio listening for data
   radio.startListening();
@@ -141,7 +136,7 @@ if (role == 1)  {
     boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
     
     while ( ! radio.available() ){                             // While nothing is received
-      if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
+      if (micros() - started_waiting_at > 1000000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
           timeout = true;
           break;
       }      
@@ -162,7 +157,7 @@ if (role == 1)  {
     delay(1000);                       // wait for a second
     digitalWrite(GREEN_LED_PIN, LOW);    // turn the LED off by making the voltage LOW  
     // Try again 5s later
-    delay(5000);
+    //delay(5000);
   }
 
 
