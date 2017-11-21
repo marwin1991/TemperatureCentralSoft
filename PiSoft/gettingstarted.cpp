@@ -1,24 +1,3 @@
-/*
- Copyright (C) 2011 J. Coliz <maniacbug@ymail.com>
-
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- version 2 as published by the Free Software Foundation.
-
- 03/17/2013 : Charles-Henri Hallard (http://hallard.me)
-              Modified to use with Arduipi board http://hallard.me/arduipi
-						  Changed to use modified bcm2835 and RF24 library
-TMRh20 2014 - Updated to work with optimized RF24 Arduino library
-
- */
-
-/**
- * Example RF Radio Ping Pair
- *
- * This is an example of how to use the RF24 class on RPi, communicating to an Arduino running
- * the GettingStarted sketch.
- */
-
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -79,9 +58,14 @@ bool radioNumber = 1;
 
 /********************************/
 
-// Radio pipe addresses for the 2 nodes to communicate.
-//const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
-const uint8_t pipes[][6] = {"1Node","2Node"};
+//const uint8_t pipes[][6] = {"1Node","2Node"};
+
+#define R_PI  {10,10,10,10,10,10}
+#define SENSOR {20,20,20,20,20,20}
+const uint8_t pipes[10][6] = {R_PI,SENSOR};
+int freeSlots = 8;
+
+void addNewSensorAddress(unsigned long elderPart, unsigned long youngerPart){}
 
 void decodeMessageTempOrError(unsigned long msg){
     short t = msg%10000;
@@ -112,13 +96,8 @@ int main(int argc, char** argv){
   bool role = role_pong_back;
 
   cout << "RF24/examples/GettingStarted/\n";
-
-  // Setup and configure rf radio
   radio.begin();
-
-  // optionally, increase the delay between retries & # of retries
   radio.setRetries(15,15);
-  // Dump the configuration of the rf unit for debugging
   radio.printDetails();
 
 
@@ -142,13 +121,10 @@ int main(int argc, char** argv){
   // This simple sketch opens two pipes for these two nodes to communicate
   // back and forth.
 
-    if ( !radioNumber )    {
-      radio.openWritingPipe(pipes[0]);
-      radio.openReadingPipe(1,pipes[1]);
-    } else {
+   
       radio.openWritingPipe(pipes[1]);
       radio.openReadingPipe(1,pipes[0]);
-    }
+  
 	
 	radio.startListening();
 	

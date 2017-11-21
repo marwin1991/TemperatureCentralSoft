@@ -73,21 +73,19 @@ unsigned long prepareMessage(short preparedTemp){
     msg += preparedTemp;
     return msg;
 }
-/****************** User Config ***************************/
-/***      Set this radio as radio number 0 or 1         ***/
-bool radioNumber = 0;
-
-/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
+/****************** Radio Configurator ***************************/
 RF24 radio(7,8);
 
-//#define TEMP_REPORT_PIEP  0xF0F0F0F0E1LL
-//#define MYPIPE 0xF0F0F0F0D2LL
-//const uint64_t addresses[2] = { TEMP_REPORT_PIEP, MYPIPE };
-byte addresses[][6] = {"1Node","2Node"};
+#define R_PI  10,10,10,10,10,10
+#define ME 20,20,20,20,20,20
+byte addresses[][6] = {R_PI,ME};
 
 void setup() {
   Serial.begin(115200);
   Serial.println(F("Arduino Nano V 3.0 - Temperature sensor via NRF24L01"));
+  /*for(int i =0; i < 6; i++){
+    Serial.println(addresses[0][i]);
+  }*/
 
   temperatureSensors.begin();
   if (!temperatureSensors.getAddress(thermometerAdress, 0)) /* Get address of DS18B20 */
