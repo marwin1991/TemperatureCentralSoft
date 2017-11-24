@@ -2,6 +2,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "RF24.h"
+#include <printf.h>
 /******************LED - green ******************************************/
 #define GREEN_LED_PIN 4
 
@@ -57,7 +58,7 @@ short prepareTemp(float temp){
 /****************Messege preparation***********************************/
 byte batteryStatus = 9; // 9 - full, 0 - empty
 
-unsigned short nanoID = 0; 
+unsigned short nanoID = 0; //0-9999
 
 unsigned long prepareMessage(short preparedTemp){
     unsigned long msg = 1; // bez bledu
@@ -76,9 +77,63 @@ unsigned long prepareMessage(short preparedTemp){
 /****************** Radio Configurator ***************************/
 RF24 radio(7,8);
 
-#define R_PI  10,10,10,10,10,10
-#define ME 20,20,20,20,20,20
+#define R_PI  {10,10,10,10,10,10}
+#define ME {21,22,23,24,25,26}
 byte addresses[][6] = {R_PI,ME};
+//byte addresses[][6] = {"1Node","2Node"};
+
+
+/********************Registration*********************************/
+void sendHello(){
+  digitalWrite(GREEN_LED_PIN, HIGH); // when green led is ON nonstop it means that we are in registrating process
+  unsigned long t = 4200000001;
+  bool iGotMyId = false;
+  while(!iGotMyId){
+    radio.stopListening();
+    while(!radio.write( &t, sizeof(unsigned long) )){
+        Serial.println(F("Failed sanding hello message! Waits 5s for next try!"));
+        delay(5000);                  // sending hello every 2s untill success
+    }
+    radio.startListening(); 
+    Serial.print(F("Succesfully send a hello message."));
+    Serial.print(F("Starts waiting for my ID."));  
+    unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
+    boolean timeout = false;  
+    while ( ! radio.available() ){                             // While nothing is received
+        if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
+            timeout = true;
+            break;
+        }      
+    }      
+    if ( timeout ){                                             // Describe the results
+          Serial.println(F("Failed waiting for ID!!!."));
+    }else{
+          unsigned long msg;                                 // Grab the response, compare, and send to debugging spew
+          radio.read( &msg, sizeof(unsigned long) );
+          if(msg/100000000 == 42){
+            Serial.print(F("Got my new ID: "));
+            //Serial.println(msg);
+            nanoID = msg%10000;
+            Serial.println(nanoID);
+            iGotMyId = true;
+          }
+    }
+    delay(10000);
+  }
+  Serial.println(F("Successfully registration on central station!"));
+  /*for(int i=0; i<6; i++){
+    radio.enableDynamicAck();
+    unsigned long t= 3;
+    t *= 1000000000;
+    t+= addresses[1][i];
+    if (!radio.write( &t, sizeof(unsigned long) )){
+      Serial.println(F("failed"));
+    }
+    Serial.print(F("Send messege: "));
+    Serial.println(t);
+    delay(1000);
+  }*/
+}
 
 void setup() {
   Serial.begin(115200);
@@ -94,19 +149,23 @@ void setup() {
   Serial.println(getTemp());
 
   pinMode(GREEN_LED_PIN, OUTPUT);
-  
+  printf_begin();
   radio.begin();
+  radio.setDataRate(RF24_250KBPS);
 
   // Set the PA Level low to prevent power supply related issues since this is a
  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
   radio.setPALevel(RF24_PA_MAX);
-  
+  //radio.setPayloadSize(4);
   // Open a writing and reading pipe on each radio, with opposite addresses
   radio.openWritingPipe(addresses[0]);
   radio.openReadingPipe(1,addresses[1]);
-  
+  radio.printDetails();
+  sendHello();
   // Start the radio listening for data
   radio.startListening();
+
+  
 }
 // Used to control whether this node is sending or receiving
 bool role = 1;
@@ -117,6 +176,7 @@ void loop() {
 if (role == 1)  {
     
     radio.stopListening();                                    // First, stop listening so we can talk.
+
     
     
     Serial.println(F("Now sending"));
@@ -134,7 +194,7 @@ if (role == 1)  {
     boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
     
     while ( ! radio.available() ){                             // While nothing is received
-      if (micros() - started_waiting_at > 1000000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
+      if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
           timeout = true;
           break;
       }      
@@ -154,8 +214,8 @@ if (role == 1)  {
     digitalWrite(GREEN_LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
     delay(1000);                       // wait for a second
     digitalWrite(GREEN_LED_PIN, LOW);    // turn the LED off by making the voltage LOW  
-    // Try again 5s later
-    //delay(5000);
+    //Try again 5s later
+    delay(4000);
   }
 
 
@@ -179,28 +239,5 @@ if (role == 1)  {
       Serial.println(got_time);  
    }
  }
-
-
-
-
-/****************** Change Roles via Serial Commands ***************************/
-
-  if ( Serial.available() )
-  {
-    char c = toupper(Serial.read());
-    if ( c == 'T' && role == 0 ){      
-      Serial.println(F("*** CHANGING TO TRANSMIT ROLE -- PRESS 'R' TO SWITCH BACK"));
-      role = 1;                  // Become the primary transmitter (ping out)
-    
-   }else
-    if ( c == 'R' && role == 1 ){
-      Serial.println(F("*** CHANGING TO RECEIVE ROLE -- PRESS 'T' TO SWITCH BACK"));      
-       role = 0;                // Become the primary receiver (pong back)
-       radio.startListening();
-       
-    }
-  }
-
-
 } // Loop
 
