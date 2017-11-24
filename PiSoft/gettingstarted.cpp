@@ -3,71 +3,84 @@
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <time.h>
+#include <stdio.h>
 #include <RF24/RF24.h>
 
 using namespace std;
-//
-// Hardware configuration
-// Configure the appropriate pins for your connections
 
 /****************** Raspberry Pi ***********************/
 
-// Radio CE Pin, CSN Pin, SPI Speed
-// See http://www.airspayce.com/mikem/bcm2835/group__constants.html#ga63c029bd6500167152db4e57736d0939 and the related enumerations for pin information.
-
-// Setup for GPIO 22 CE and CE0 CSN with SPI Speed @ 4Mhz
-//RF24 radio(RPI_V2_GPIO_P1_22, BCM2835_SPI_CS0, BCM2835_SPI_SPEED_4MHZ);
-
-// NEW: Setup for RPi B+
-//RF24 radio(RPI_BPLUS_GPIO_J8_15,RPI_BPLUS_GPIO_J8_24, BCM2835_SPI_SPEED_8MHZ);
-
-// Setup for GPIO 15 CE and CE0 CSN with SPI Speed @ 8Mhz
-//RF24 radio(RPI_V2_GPIO_P1_15, RPI_V2_GPIO_P1_24, BCM2835_SPI_SPEED_8MHZ);
-
-// RPi generic:
 RF24 radio(22,0);
 
-/*** RPi Alternate ***/
-//Note: Specify SPI BUS 0 or 1 instead of CS pin number.
-// See http://tmrh20.github.io/RF24/RPi.html for more information on usage
-
-//RPi Alternate, with MRAA
-//RF24 radio(15,0);
-
-//RPi Alternate, with SPIDEV - Note: Edit RF24/arch/BBB/spi.cpp and  set 'this->device = "/dev/spidev0.0";;' or as listed in /dev
-//RF24 radio(22,0);
-
-
-/****************** Linux (BBB,x86,etc) ***********************/
-
-// See http://tmrh20.github.io/RF24/pages.html for more information on usage
-// See http://iotdk.intel.com/docs/master/mraa/ for more information on MRAA
-// See https://www.kernel.org/doc/Documentation/spi/spidev for more information on SPIDEV
-
-// Setup for ARM(Linux) devices like BBB using spidev (default is "/dev/spidev1.0" )
-//RF24 radio(115,0);
-
-//BBB Alternate, with mraa
-// CE pin = (Header P9, Pin 13) = 59 = 13 + 46 
-//Note: Specify SPI BUS 0 or 1 instead of CS pin number. 
-//RF24 radio(59,0);
-
-/********** User Config *********/
-// Assign a unique identifier for this node, 0 or 1
 bool radioNumber = 1;
 
-/********************************/
 
 //const uint8_t pipes[][6] = {"1Node","2Node"};
 
 #define R_PI  {10,10,10,10,10,10}
-#define SENSOR {20,20,20,20,20,20}
+#define SENSOR {21,22,23,24,25,26}
 const uint8_t pipes[10][6] = {R_PI,SENSOR};
 int freeSlots = 8;
 
 void addNewSensorAddress(unsigned long elderPart, unsigned long youngerPart){}
 
+bool canRegister = false;
+int canRegisterTime = 0;
+int gpioButton = 15;
+int ledPin = 14;
+short * sensorsIds;
+short sensorIdsLeftSize = 0;
+short sensorIdsSize = 0;
+
+void expandSensorsIdsTab(){
+	short * tmp = (short*)malloc(sizeof(short) * (sensorIdsSize + 6));
+	copy(sensorsIds, sensorsIds + sensorIdsSize, tmp);
+	delete [] sensorsIds;
+	sensorsIds = tmp;
+	tmp = NULL;
+	delete tmp;
+	sensorIdsLeftSize = 6;
+	sensorIdsSize +=6;
+}
+
+void respondHello(){
+	
+	if(sensorIdsLeftSize == 0)
+		expandSensorsIdsTab();
+	
+	short tmpID;
+	bool isIdBad = true;
+	while(isIdBad){
+		isIdBad = false;
+		tmpID = (short) rand() % 9998 + 1;   // ID from 1 - 9998
+		for(int i=0; i<sensorIdsSize; i++)
+			if(tmpID == sensorsIds[i])
+				isIdBad = true;
+	}
+	
+	sensorsIds[sensorIdsSize-sensorIdsLeftSize] = tmpID;
+	sensorIdsLeftSize--;
+	
+	radio.stopListening();
+	unsigned long msg =4200000000;
+	msg += tmpID;
+	
+	if(radio.write( &msg, sizeof(unsigned long) )){
+		printf("Sending ID: %lu\n", msg);
+	} else {
+		printf("Failed sending ID\n");
+	}
+}
+
 void decodeMessageTempOrError(unsigned long msg){
+	if(msg == 4200000001){
+		if(canRegister == true){			
+			respondHello();
+			printf("Got hello messege!");
+		}
+		return;
+	}
     short t = msg%10000;
 	msg /= 10000;
  
@@ -81,42 +94,37 @@ void decodeMessageTempOrError(unsigned long msg){
  
     if(type == 2)
         printf("Some error occures on device with ID: %d, please check file: ...\n", nanoId);
+    if(type == 3){
+		printf("TYPE 3: %lu\n", msg);
+	}
     else{
 		if(t%2 == 1)
         t *= -1;
+        time_t time1 = time(NULL);
+        struct tm *tm = localtime(&time1);
+        char s[64];
+        strftime(s, sizeof(s), "%c", tm);
 		float temp = (t * 1.0) / 100;
-        printf("ID: %d Battery: %d%% Temperature: %.2f\n", nanoId, (batteryStatus+1)*10, temp);
+        printf("Time: %s ID: %d Battery: %d%% Temperature: %.2f\n", s, nanoId, (batteryStatus+1)*10, temp);
 	}
 }
 
 
 int main(int argc, char** argv){
 
-  bool role_ping_out = true, role_pong_back = false;
-  bool role = role_pong_back;
-
   cout << "RF24/examples/GettingStarted/\n";
   radio.begin();
   radio.setRetries(15,15);
+  radio.setDataRate(RF24_250KBPS);
+  cout << "hello";
   radio.printDetails();
+  
+  if(!bcm2835_init()) {
+      printf("GPIO initialization failed!\n");
+      return 1;
+   }
+   printf("GPIO initailization succesed!\n");
 
-
-/********* Role chooser ***********/
-
-  printf("\n ************ Role Setup ***********\n");
-  string input = "";
-  char myChar = {0};
-  cout << "Choose a role: Enter 0 for pong_back, 1 for ping_out (CTRL+C to exit) \n>";
-  getline(cin,input);
-
-  if(input.length() == 1) {
-	myChar = input[0];
-	if(myChar == '0'){
-		cout << "Role: Pong Back, awaiting transmission " << endl << endl;
-	}else{  cout << "Role: Ping Out, starting transmission " << endl << endl;
-		role = role_ping_out;
-	}
-  }
 /***********************************/
   // This simple sketch opens two pipes for these two nodes to communicate
   // back and forth.
@@ -128,59 +136,42 @@ int main(int argc, char** argv){
 	
 	radio.startListening();
 	
+	pinMode(gpioButton,BCM2835_GPIO_FSEL_INPT);
+	pinMode(ledPin,BCM2835_GPIO_FSEL_OUTP);
+	bcm2835_gpio_pud(gpioButton);
+	
 	// forever loop
 	while (1)
-	{
-		if (role == role_ping_out)
-		{
-			// First, stop listening so we can talk.
-			radio.stopListening();
-
-			// Take the time, and send it.  This will block until complete
-
-			printf("Now sending...\n");
-			unsigned long time = millis();
-
-			bool ok = radio.write( &time, sizeof(unsigned long) );
-
-			if (!ok){
-				printf("failed.\n");
-			}
-			// Now, continue listening
-			radio.startListening();
-
-			// Wait here until we get a response, or timeout (250ms)
-			unsigned long started_waiting_at = millis();
-			bool timeout = false;
-			while ( ! radio.available() && ! timeout ) {
-				if (millis() - started_waiting_at > 200 )
-					timeout = true;
-			}
-
-
-			// Describe the results
-			if ( timeout )
+	{	
+			int btnState = bcm2835_gpio_lev((uint8_t) gpioButton);
+			//printf("%d", btnState);
+			if(btnState == 0) // it was cliked
 			{
-				printf("Failed, response timed out.\n");
+				printf("Cliked!!\n");
+				int i = 0;
+				for (i=0; i<=50; i++){
+					if(bcm2835_gpio_lev((uint8_t) gpioButton) == 1)
+						break;
+					delay(100);
+				}
+				if( i >= 50 ) 
+				{
+					canRegister = true;
+					bcm2835_gpio_write(ledPin,1);
+					printf("Waiting for sensor to connect!\n");
+				}		
+				
 			}
-			else
-			{
-				// Grab the response, compare, and send to debugging spew
-				unsigned long got_time;
-				radio.read( &got_time, sizeof(unsigned long) );
-
-				// Spew it
-				printf("Got response %lu, round-trip delay: %lu\n",got_time,millis()-got_time);
+			if(canRegister == true){
+				canRegisterTime++;
+				delay(100);
+				if(canRegisterTime == 300){
+					canRegisterTime = 0;
+					canRegister = false;
+					bcm2835_gpio_write(ledPin,0);
+					printf("Time for registration ended!\n");
+				}
 			}
-			sleep(1);
-		}
-
-		//
-		// Pong back role.  Receive each packet, dump it out, and send it back
-		//
-
-		if ( role == role_pong_back )
-		{
 			
 			// if there is data ready
 			if ( radio.available() )
@@ -192,20 +183,13 @@ int main(int argc, char** argv){
 				while(radio.available()){
 					radio.read( &got_time, sizeof(unsigned long) );
 				}
-				radio.stopListening();
-				radio.write( &got_time, sizeof(unsigned long) );
 
-				// Now, resume listening so we catch the next packets.
-				radio.startListening();
 				decodeMessageTempOrError(got_time);
-				// Spew it
-				printf("Got payload(%d) %lu...\n",sizeof(unsigned long), got_time);
+				radio.startListening();
 				
-				//delay(925); //Delay after payload responded to, minimize RPi CPU time
-				
+				delay(925); //Delay after payload responded to, minimize RPi CPU time
+
 			}
-		
-		}
 
 	} // forever loop
 
