@@ -3,6 +3,7 @@
 #include <DallasTemperature.h>
 #include "RF24.h"
 #include <printf.h>
+#include "LowPower.h"
 /******************LED - green ******************************************/
 #define GREEN_LED_PIN 4
 
@@ -58,6 +59,20 @@ short prepareTemp(float temp){
 /****************Messege preparation***********************************/
 byte batteryStatus = 9; // 9 - full, 0 - empty
 
+
+/////
+/* #define Z1 4100.0
+#define Z2 4700.0
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  float Vout = analogRead(A0) * (5.0/1023.0);
+  float Vin = (Z1 + Z2)/(Z2) * Vout;
+  Serial.println(Vin);
+  delay(2000);
+}
+ */
+
 unsigned short nanoID = 0; //0-9999
 
 unsigned long prepareMessage(short preparedTemp){
@@ -91,8 +106,8 @@ void sendHello(){
   while(!iGotMyId){
     radio.stopListening();
     while(!radio.write( &t, sizeof(unsigned long) )){
-        Serial.println(F("Failed sanding hello message! Waits 5s for next try!"));
-        delay(5000);                  // sending hello every 2s untill success
+        Serial.println(F("Failed sanding hello message! Waits 4s for next try!"));
+        LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);                   // sending hello every 4s untill success
     }
     radio.startListening(); 
     Serial.print(F("Succesfully send a hello message."));
@@ -118,7 +133,7 @@ void sendHello(){
             iGotMyId = true;
           }
     }
-    delay(10000);
+    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
   }
   Serial.println(F("Successfully registration on central station!"));
   /*for(int i=0; i<6; i++){
@@ -161,11 +176,8 @@ void setup() {
   radio.openWritingPipe(addresses[0]);
   radio.openReadingPipe(1,addresses[1]);
   radio.printDetails();
-  sendHello();
+  //sendHello();
   // Start the radio listening for data
-  radio.startListening();
-
-  
 }
 // Used to control whether this node is sending or receiving
 bool role = 1;
@@ -188,34 +200,11 @@ if (role == 1)  {
     Serial.print(F("Send messege: "));
     Serial.println(msg);
         
-    radio.startListening();                                    // Now, continue listening
-    
-    unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
-    boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
-    
-    while ( ! radio.available() ){                             // While nothing is received
-      if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
-          timeout = true;
-          break;
-      }      
-    }
-        
-    if ( timeout ){                                             // Describe the results
-        Serial.println(F("Failed, response timed out."));
-    }else{
-        unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
-        radio.read( &got_time, sizeof(unsigned long) );
-        unsigned long end_time = micros();
-        
-        // Spew it
-        Serial.print(F("Got response "));
-        Serial.println(got_time);
-    }
     digitalWrite(GREEN_LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    delay(1000);                       // wait for a second
+    LowPower.powerDown(SLEEP_1S, ADC_OFF, BOD_OFF);                    // wait for a second
     digitalWrite(GREEN_LED_PIN, LOW);    // turn the LED off by making the voltage LOW  
     //Try again 5s later
-    delay(4000);
+    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
   }
 
 
