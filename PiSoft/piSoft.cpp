@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdio.h>
+#include <fstream>
+#include <thread> 
 #include <RF24/RF24.h>
 
 using namespace std;
@@ -18,7 +20,7 @@ bool radioNumber = 1;
 
 //const uint8_t pipes[][6] = {"1Node","2Node"};
 
-#define R_PI  {10,10,10,10,10,10}
+#define R_PI {10,10,10,10,10,10}
 #define SENSOR {21,22,23,24,25,26}
 const uint8_t pipes[10][6] = {R_PI,SENSOR};
 int freeSlots = 8;
@@ -51,6 +53,7 @@ void respondHello(){
 	
 	short tmpID;
 	bool isIdBad = true;
+	srand(time(NULL));
 	while(isIdBad){
 		isIdBad = false;
 		tmpID = (short) rand() % 9998 + 1;   // ID from 1 - 9998
@@ -69,15 +72,31 @@ void respondHello(){
 	if(radio.write( &msg, sizeof(unsigned long) )){
 		printf("Sending ID: %lu\n", msg);
 	} else {
-		printf("Failed sending ID\n");
+		printf("Failed sending ID!\n");
 	}
+}
+
+void printRaspberryTemperatue(){
+		while(true){
+			ifstream file;
+			string line;
+			file.open("/sys/bus/w1/devices/28-0317233eb7ff/w1_slave");
+			
+			if(file.is_open()){
+				while(getline(file, line)){
+					cout << line << endl;
+				}
+			}
+			
+			delay(10000);
+		}
 }
 
 void decodeMessageTempOrError(unsigned long msg){
 	if(msg == 4200000001){
 		if(canRegister == true){			
+			printf("Got hello messege!\n");
 			respondHello();
-			printf("Got hello messege!");
 		}
 		return;
 	}
@@ -92,14 +111,16 @@ void decodeMessageTempOrError(unsigned long msg){
 
     short type = msg%10;
  
-    if(type == 2)
+    if(type == 2){
         printf("Some error occures on device with ID: %d, please check file: ...\n", nanoId);
+        return;
+	}
     if(type == 3){
 		printf("TYPE 3: %lu\n", msg);
 	}
     else{
 		if(t%2 == 1)
-        t *= -1;
+			t *= -1;
         time_t time1 = time(NULL);
         struct tm *tm = localtime(&time1);
         char s[64];
@@ -112,11 +133,10 @@ void decodeMessageTempOrError(unsigned long msg){
 
 int main(int argc, char** argv){
 
-  cout << "RF24/examples/GettingStarted/\n";
+  cout << "Temperature Central Soft \n";
   radio.begin();
   radio.setRetries(15,15);
   radio.setDataRate(RF24_250KBPS);
-  cout << "hello";
   radio.printDetails();
   
   if(!bcm2835_init()) {
@@ -139,6 +159,8 @@ int main(int argc, char** argv){
 	pinMode(gpioButton,BCM2835_GPIO_FSEL_INPT);
 	pinMode(ledPin,BCM2835_GPIO_FSEL_OUTP);
 	bcm2835_gpio_pud(gpioButton);
+	
+	thread t1 (printRaspberryTemperatue);
 	
 	// forever loop
 	while (1)
