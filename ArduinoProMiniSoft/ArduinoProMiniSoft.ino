@@ -1,12 +1,20 @@
+/******************Remote Sensor Temperature ****************************/
+/* Author:       Piotr Zmilczak and Arkadiusz Dudzik                    */
+/* Date:         02.01.2018                                             */
+/* Board:        Arduino Mini Pro 5V, 16MHz -(Tested)                   */
+/* Board:        Arduino Mini Pro 3V, 8MHz -(Not tested but better)     */
+/************************************************************************/
 #include <SPI.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "RF24.h"
 #include <printf.h>
 #include "LowPower.h"
+#include <EEPROM.h>
 /******************LED - green ******************************************/
 #define GREEN_LED_PIN 4
-
+/******************Button - reset****************************************/
+#define RESET_PIN 3
 /******************Thermometer Config and functions**********************/
 #define DS18B20_PIN 2
 #define TEMP_RESOLUTION 9 
@@ -59,18 +67,21 @@ short prepareTemp(float temp){
 /****************Battery Status***********************************/
 byte batteryStatus = 9; // 9 - full, 0 - empty
 
-
-#define Z1 4100.0
-#define Z2 4700.0
-
 void checkBattery() {
-  // put your main code here, to run repeatedly:
-  float Vout = analogRead(A0) * (5.0/1023.0);
-  float Vin = (Z1 + Z2)/(Z2) * Vout;
+  
+  float Vout = analogRead(A1) * (5.0/1023.0);
+  float Vin = 2*Vout;
+  if(Vin >= 9 )
+    Vin = 9;
   batteryStatus = (byte) Vin;
+  
 }
 /****************ID of this sensor***********************************/
-unsigned short nanoID = 0; //0-9999
+unsigned short miniProID = 0; //0-9999
+int id_mem_addr0 = 0;
+int id_mem_addr1 = 1;
+byte ret0;
+byte ret1;
 /****************Messege preparation***********************************/
 unsigned long prepareMessage(short preparedTemp){
     unsigned long msg = 1; // bez bledu
@@ -79,7 +90,7 @@ unsigned long prepareMessage(short preparedTemp){
         msg = 2; // 2 jako blad chyba lepsza bo wszystkie wiadomosci bd mialy taka sama dlugosc
 
     msg *= 10000;
-    msg += nanoID;
+    msg += miniProID;
     msg *= 10;
     checkBattery();
     msg += batteryStatus;
@@ -104,16 +115,15 @@ void sendHello(){
     radio.stopListening();
     while(!radio.write( &t, sizeof(unsigned long) )){
         Serial.println(F("Failed sending hello message! Waits 4s for next try!"));
-        delay(3000);
-        //LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);                   // sending hello every 4s untill success
+        delay(4000);
     }
     radio.startListening(); 
-    Serial.print(F("Succesfully send a hello message."));
-    Serial.print(F("Starts waiting for my ID."));  
+    Serial.println(F("Succesfully send a hello message."));
+    Serial.println(F("Starts waiting for my ID."));  
     unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
     boolean timeout = false;  
-    while ( ! radio.available() and ! timeout){                             // While nothing is received
-        if (micros() - started_waiting_at > 500000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
+    while ( !radio.available() and ! timeout){                             // While nothing is received
+        if (micros() - started_waiting_at > 200000 ){            // If waited longer than 5000ms, indicate timeout and exit while loop
             timeout = true;
         }
     }      
@@ -123,33 +133,64 @@ void sendHello(){
     }else{
           unsigned long msg;                                 // Grab the response, compare, and send to debugging spew
           radio.read( &msg, sizeof(unsigned long) );
-          Serial.println(F("AAA"));
           if(msg/100000000 == 42){
             Serial.print(F("Got my new ID: "));
-            //Serial.println(msg);
-            nanoID = msg%10000;
-            Serial.println(nanoID);
+            miniProID = msg % 10000;
+            unsigned short tempID = miniProID;
+            ret0 = (byte)(tempID & 0xff);
+            ret1 = (byte)((tempID >> 8) & 0xff);
+            EEPROM.write(id_mem_addr0,ret0);
+            EEPROM.write(id_mem_addr1,ret1);
+            Serial.println(miniProID);
             iGotMyId = true;
             delay(100);
           }
+          delay(3000);
     }
-    //LowPower.powerDown(SLEEP_4S, ADC_OFF, BOD_OFF);
-    delay(3000);
+    delay(4000);
   }
   Serial.println(F("Successfully registration on central station!"));
+  radio.stopListening();  
+  digitalWrite(GREEN_LED_PIN, LOW);  
+}
+/****************** Reseting ID******************************************/
+void resetId(){
+  Serial.print(F("Actual id: "));
+  Serial.println(miniProID);
+  if (miniProID == 0){
+     return;
+  }else{
+     Serial.println(F("Reseting ID"));
+     EEPROM.write(id_mem_addr0,0);
+     EEPROM.write(id_mem_addr1,0);
+     miniProID = 0;
+  }
 }
 
+void resetInteruptHandler(){
+   static unsigned long last_interrupt_time = 0;
+   unsigned long interrupt_time = millis();
+   if (interrupt_time - last_interrupt_time > 20) 
+   {
+       resetId();
+   }
+   last_interrupt_time = interrupt_time;
+}
+/****************Board setup*********************************************/
 void setup() {
   Serial.begin(115200);
-  Serial.println(F("Arduino Nano V 3.0 - Temperature sensor via NRF24L01"));
-  
+  Serial.println(F("Arduino Mini Pro - Temperature sensor via NRF24L01"));
+
   temperatureSensors.begin();
-  if (!temperatureSensors.getAddress(thermometerAdress, 0)) /* Get address of DS18B20 */
+  if (!temperatureSensors.getAddress(thermometerAdress, 0)) 
     Serial.println("Unable to find address of thermometer"); 
   temperatureSensors.setResolution(thermometerAdress, TEMP_RESOLUTION);
   Serial.println(getTemp());
 
   pinMode(GREEN_LED_PIN, OUTPUT);
+  pinMode(RESET_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(RESET_PIN), resetInteruptHandler, RISING);
+  
   printf_begin();
   radio.begin();
   radio.setDataRate(RF24_250KBPS);
@@ -157,24 +198,33 @@ void setup() {
   radio.openWritingPipe(addresses[0]);
   radio.openReadingPipe(1,addresses[1]);
   radio.printDetails();
-  sendHello();
+  miniProID = (unsigned short) ((EEPROM.read(id_mem_addr1)<<8) | (EEPROM.read(id_mem_addr0)));
+  Serial.print(F("Restored id: "));
+  Serial.println(miniProID);
+  if( miniProID == 0 ){
+     sendHello();
+  }
 }
-void loop() {
-    radio.stopListening();                                    // First, stop listening so we can talk.
-    Serial.println(F("Now sending"));
 
+/***********************Main loop*******************************************/
+void loop() {
+    if( miniProID == 0 ){
+       sendHello();
+    }
+    digitalWrite(GREEN_LED_PIN, HIGH);
     unsigned long msg = prepareMessage(prepareTemp(getTemp()));                             // Take the time, and send it.  This will block until complete
-     if (!radio.write( &msg, sizeof(unsigned long) )){
-       Serial.println(F("failed"));
-     }
-    Serial.print(F("Send messege: "));
-    Serial.println(msg);
-        
-    digitalWrite(GREEN_LED_PIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+    if (!radio.write( &msg, sizeof(unsigned long))){
+      Serial.print(F("Failed sending messege: "));
+      Serial.println(msg);
+    } else {
+      Serial.print(F("Send messege: "));
+      Serial.println(msg);
+    }
+    digitalWrite(GREEN_LED_PIN, LOW);
     delay(50);
-    LowPower.powerDown(SLEEP_1S, ADC_OFF, BOD_OFF);                    // wait for a second
-    digitalWrite(GREEN_LED_PIN, LOW);    // turn the LED off by making the voltage LOW  
-    //Try again 5s later
-    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
+    if( miniProID != 0 )LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
+    if( miniProID != 0 )LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
+    if( miniProID != 0 )LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
+    if( miniProID != 0 )LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
 }
 
