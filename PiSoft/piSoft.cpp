@@ -1,29 +1,26 @@
 #include <cstdlib>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <unistd.h>
 #include <time.h>
 #include <stdio.h>
+#include <fstream>
+#include <thread> 
+#include <csignal>
 #include <RF24/RF24.h>
 
 using namespace std;
-
-/****************** Raspberry Pi ***********************/
 
 RF24 radio(22,0);
 
 bool radioNumber = 1;
 
-
-//const uint8_t pipes[][6] = {"1Node","2Node"};
-
-#define R_PI  {10,10,10,10,10,10}
+#define R_PI {10,10,10,10,10,10}
 #define SENSOR {21,22,23,24,25,26}
 const uint8_t pipes[10][6] = {R_PI,SENSOR};
 int freeSlots = 8;
-
-void addNewSensorAddress(unsigned long elderPart, unsigned long youngerPart){}
 
 bool canRegister = false;
 int canRegisterTime = 0;
@@ -51,9 +48,10 @@ void respondHello(){
 	
 	short tmpID;
 	bool isIdBad = true;
+	srand(time(NULL));
 	while(isIdBad){
 		isIdBad = false;
-		tmpID = (short) rand() % 9998 + 1;   // ID from 1 - 9998
+		tmpID = (short) (rand() % 9000) + 1000;   // ID from 1000 - 9999
 		for(int i=0; i<sensorIdsSize; i++)
 			if(tmpID == sensorsIds[i])
 				isIdBad = true;
@@ -67,17 +65,50 @@ void respondHello(){
 	msg += tmpID;
 	
 	if(radio.write( &msg, sizeof(unsigned long) )){
-		printf("Sending ID: %lu\n", msg);
+		cout << "Sending message: " << msg << " to sensor..." << endl;
 	} else {
-		printf("Failed sending ID\n");
+		cout << "Failed sending message!" << endl;
 	}
+}
+
+void printRaspberryTemperatue(){
+		while(true){
+			ifstream file;
+			string line;
+			file.open("/sys/bus/w1/devices/28-0317233eb7ff/w1_slave");
+			
+			if(file.is_open()){
+				getline(file, line);
+				getline(file, line);
+				
+				int k = (int) line.find("t=") + 2;
+				
+				string temp = line.substr(k);
+				float f_temp = atof(temp.c_str());
+				
+				time_t time1 = time(NULL);
+				struct tm *tm = localtime(&time1);
+				char s[64];
+				strftime(s, sizeof(s), "%c", tm);
+				
+				cout << fixed;
+				cout.precision(2);
+				cout << "Time: " << s << " ID: RaspberryPiStation Temperature: " << f_temp/1000 << endl;
+			}
+			delay(32000);
+		}
+}
+
+void signal_handler(int signal){
+  cout << endl << "Exiting piSoft for central temperature sensor base..." << endl;
+  exit(0);
 }
 
 void decodeMessageTempOrError(unsigned long msg){
 	if(msg == 4200000001){
 		if(canRegister == true){			
+			cout << "Received request for ID from new sensor...!" << endl;
 			respondHello();
-			printf("Got hello messege!");
 		}
 		return;
 	}
@@ -92,73 +123,67 @@ void decodeMessageTempOrError(unsigned long msg){
 
     short type = msg%10;
  
-    if(type == 2)
-        printf("Some error occures on device with ID: %d, please check file: ...\n", nanoId);
+    if(type == 2){
+        cout << "Some error occures on device with ID: " << nanoId << endl;
+        return;
+	}
     if(type == 3){
-		printf("TYPE 3: %lu\n", msg);
+		//In future message types can be extende
+		cout << "TYPE 3: " << msg << endl;
 	}
     else{
 		if(t%2 == 1)
-        t *= -1;
+			t *= -1;
         time_t time1 = time(NULL);
         struct tm *tm = localtime(&time1);
         char s[64];
         strftime(s, sizeof(s), "%c", tm);
 		float temp = (t * 1.0) / 100;
-        printf("Time: %s ID: %d Battery: %d%% Temperature: %.2f\n", s, nanoId, (batteryStatus+1)*10, temp);
+		cout << fixed;
+		cout.precision(2);
+        cout << "Time: " << s  <<" ID: " << nanoId << " Battery: " << (batteryStatus+1)*10 << "% Temperature: " << temp << endl;
 	}
 }
 
-
 int main(int argc, char** argv){
-
-  cout << "RF24/examples/GettingStarted/\n";
-  radio.begin();
-  radio.setRetries(15,15);
-  radio.setDataRate(RF24_250KBPS);
-  cout << "hello";
-  radio.printDetails();
+    cout << "Temperature Central Soft " << endl;
+    radio.begin();
+    radio.setRetries(15,15);
+    radio.setDataRate(RF24_250KBPS);
+    radio.printDetails();
   
-  if(!bcm2835_init()) {
-      printf("GPIO initialization failed!\n");
-      return 1;
-   }
-   printf("GPIO initailization succesed!\n");
+    if(!bcm2835_init()) {
+       cout << "GPIO initialization failed!" << endl;
+       return 1;
+    }
+    cout << "GPIO initailization succesed!" << endl;
 
-/***********************************/
-  // This simple sketch opens two pipes for these two nodes to communicate
-  // back and forth.
-
-   
-      radio.openWritingPipe(pipes[1]);
-      radio.openReadingPipe(1,pipes[0]);
+    radio.openWritingPipe(pipes[1]);
+    radio.openReadingPipe(1,pipes[0]);
   
-	
 	radio.startListening();
 	
 	pinMode(gpioButton,BCM2835_GPIO_FSEL_INPT);
 	pinMode(ledPin,BCM2835_GPIO_FSEL_OUTP);
 	bcm2835_gpio_pud(gpioButton);
 	
-	// forever loop
-	while (1)
-	{	
+	thread t1 (printRaspberryTemperatue);
+	signal(SIGINT, signal_handler);
+
+	while (1){	
 			int btnState = bcm2835_gpio_lev((uint8_t) gpioButton);
-			//printf("%d", btnState);
-			if(btnState == 0) // it was cliked
-			{
-				printf("Cliked!!\n");
+			if(btnState == 0){ // button was cliked
 				int i = 0;
+				cout << "Keep button pressed for 5 seconds..." << endl;
 				for (i=0; i<=50; i++){
 					if(bcm2835_gpio_lev((uint8_t) gpioButton) == 1)
 						break;
 					delay(100);
 				}
-				if( i >= 50 ) 
-				{
+				if( i >= 50 ){
 					canRegister = true;
 					bcm2835_gpio_write(ledPin,1);
-					printf("Waiting for sensor to connect!\n");
+					cout << "Waiting for sensor to connect!" << endl;
 				}		
 				
 			}
@@ -169,17 +194,13 @@ int main(int argc, char** argv){
 					canRegisterTime = 0;
 					canRegister = false;
 					bcm2835_gpio_write(ledPin,0);
-					printf("Time for registration ended!\n");
+					cout << "Time for registration ended!" << endl;
 				}
 			}
 			
-			// if there is data ready
-			if ( radio.available() )
-			{
-				// Dump the payloads until we've gotten everything
+			if ( radio.available() ){
 				unsigned long got_time;
 
-				// Fetch the payload, and see if this was the last one.
 				while(radio.available()){
 					radio.read( &got_time, sizeof(unsigned long) );
 				}
@@ -187,12 +208,9 @@ int main(int argc, char** argv){
 				decodeMessageTempOrError(got_time);
 				radio.startListening();
 				
-				delay(925); //Delay after payload responded to, minimize RPi CPU time
-
+				delay(925); //Delay to minimize RPi CPU time
 			}
-
-	} // forever loop
+	}
 
   return 0;
 }
-
